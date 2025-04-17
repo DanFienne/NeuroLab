@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 
-from typing import Tuple
 import triton.language as tl
 from triton import Config
 import triton
@@ -52,7 +51,7 @@ def weight_dequant_kernel(x_ptr, s_ptr, y_ptr, M, N, block_size):
     tl.store(y_ptr + offs, y, mask=mask)
 
 
-def weight_dequant(x, s, block_size):
+def weight_dequant(x, s, block_size=128):
     M, N = x.size()
     y = torch.empty_like(x, dtype=torch.get_default_dtype())
     grid = lambda meta: (triton.cdiv(M, meta['block_size']), triton.cdiv(N, meta['block_size']))
