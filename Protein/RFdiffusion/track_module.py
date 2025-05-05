@@ -1,8 +1,9 @@
 from torch import nn
 import torch
+import torch.nn.functional as F
 
 from normalizes import init_lecun_normal
-from attentions import MSARowAttentionWithBias, MSAColAttention
+from attentions import MSARowAttentionWithBias, MSAColAttention, BiasedAxialAttention
 from layers import Dropout, FeedForwardLayer
 
 
@@ -43,4 +44,37 @@ class MSAPairStr2MSA(nn.Module):
         msa = msa + self.col_attn(msa)
         msa = msa + self.ff(msa)
         return msa
+
+
+class PairStr2Pair(nn.Module):
+    def __init__(self, d_pair=128, n_head=4, d_hidden=32, d_rbf=36, p_drop=0.15):
+        super().__init__()
+        self.emb_rbf = nn.Linear(d_rbf, d_hidden)
+        self.proj_rbf = nn.Linear(d_hidden, d_pair)
+
+        self.drop_row = Dropout(broadcast_dim=1, p_drop=p_drop)
+        self.drop_col = Dropout(broadcast_dim=2, p_drop=p_drop)
+
+        self.row_attn = BiasedAxialAttention(d_pair, d_pair, n_head, d_hidden, p_drop=p_drop, is_row=True)
+        self.col_attn = BiasedAxialAttention(d_pair, d_pair, n_head, d_hidden, p_drop=p_drop, is_row=False)
+
+        self.ff = FeedForwardLayer(d_pair, 2)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_normal_(self.emb_rbf.weight, nonlinearity='relu')
+        nn.init.zeros_(self.emb_rbf.bias)
+
+        self.proj_rbf = init_lecun_normal(self.proj_rbf)
+        nn.init.zeros_(self.proj_rbf.bias)
+
+    def forward(self, pair, rbf_feat):
+        b, l = pair.shape[:2]
+        rbf_feat = self.proj_rbf(F.relu_(self.emb_rbf(rbf_feat)))
+
+        pair = pair + self.drop_row(self.row_attn(pair, rbf_feat))
+        pair = pair + self.drop_col(self.col_attn(pair, rbf_feat))
+        pair = pair + self.ff(pair)
+        return pair
 
