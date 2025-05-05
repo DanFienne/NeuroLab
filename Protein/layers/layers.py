@@ -18,3 +18,4 @@ class Dropout(nn.Module):
         mask = self.sampler.sample(shape).to(x.device).view(shape)
         x = x * mask / (1 - self.p_drop)
         return x
+
